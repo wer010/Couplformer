@@ -48,7 +48,7 @@ def init_parser():
                         choices=['cifar10', 'cifar100'],
                         default='cifar10')
 
-    parser.add_argument('-j', '--workers', default=4, type=int, metavar='N',
+    parser.add_argument('-j', '--workers', default=0, type=int, metavar='N',
                         help='number of data loading workers (default: 4)')
 
     parser.add_argument('--print-freq', default=10, type=int, metavar='N',
@@ -122,7 +122,6 @@ def main():
                                         n_conv_layers=args.conv_layers,
                                         kernel_size=args.conv_size,
                                         patch_size=args.patch_size)
-
     criterion = LabelSmoothingCrossEntropy()
 
     if (not args.no_cuda) and torch.cuda.is_available():

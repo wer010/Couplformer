@@ -3,7 +3,7 @@ from torch.nn import Module, ModuleList, Linear, Dropout, LayerNorm, Identity, P
 import torch.nn.functional as F
 from .stochastic_depth import DropPath
 
-
+# TODO: rewrite the attention class and inherit the class to realize our attention mechanism
 class Attention(Module):
     """
     Obtained from timm: github.com:rwightman/pytorch-image-models
@@ -32,8 +32,10 @@ class Attention(Module):
         batch, num_head, hw, channel =q.shape
         q_s = q.view(batch, num_head, 8, 8, channel)
         _, _, height, width, _ = q_s.shape
-        q_a = q.reshape(batch, num_head, height, width * channel)
-        q_b = q.reshape(batch, num_head, width, height * channel)
+        # q_a = q.reshape(batch, num_head, height, width * channel)
+        # q_b = q.reshape(batch, num_head, width, height * channel)
+        q_a = q.permute(0,1,4,2,3)          #batch ,
+        q_b = q.permute(0,1,4,3,2)
 
         k_s = k.view(batch, num_head, 8, 8, channel)
         k_a = k.reshape(batch, num_head, height, width * channel)
