@@ -2,14 +2,16 @@
 
 import argparse
 from time import time
+from datetime import datetime
 import math
-
+import os
 import torch
 import torch.nn as nn
 import torch.optim
 import torch.utils.data
 import torchvision.transforms as transforms
 import torchvision.datasets as datasets
+from torch.utils.tensorboard import SummaryWriter
 
 import src as models
 from utils.losses import LabelSmoothingCrossEntropy
@@ -48,10 +50,10 @@ def init_parser():
                         choices=['cifar10', 'cifar100'],
                         default='cifar10')
 
-    parser.add_argument('-j', '--workers', default=0, type=int, metavar='N',
+    parser.add_argument('-j', '--workers', default=4, type=int, metavar='N',
                         help='number of data loading workers (default: 4)')
 
-    parser.add_argument('--print-freq', default=10, type=int, metavar='N',
+    parser.add_argument('--print-freq', default=200, type=int, metavar='N',
                         help='log frequency (by iteration)')
 
     parser.add_argument('--checkpoint-path',
@@ -124,6 +126,12 @@ def main():
                                         patch_size=args.patch_size)
     criterion = LabelSmoothingCrossEntropy()
 
+    ctime = datetime.now()
+    run_path = './runs/' + ctime.strftime("%Y-%b-%d_%H:%M:%S") + '_' + args.model+'_' + args.dataset
+    if not os.path.exists(run_path):
+        os.mkdir(run_path)
+
+    writer = SummaryWriter(run_path)
     if (not args.no_cuda) and torch.cuda.is_available():
         torch.cuda.set_device(args.gpu_id)
         model.cuda(args.gpu_id)
@@ -152,7 +160,7 @@ def main():
         root=args.data, train=True, download=True, transform=augmentations)
 
     val_dataset = datasets.__dict__[args.dataset.upper()](
-        root=args.data, train=True, download=True, transform=transforms.Compose([
+        root=args.data, train=False, download=True, transform=transforms.Compose([
             transforms.Resize(img_size),
             transforms.ToTensor(),
             *normalize,
@@ -168,10 +176,43 @@ def main():
         num_workers=args.workers)
 
     print("Beginning training")
+    total_iter = 0
     time_begin = time()
     for epoch in range(args.epochs):
         adjust_learning_rate(optimizer, epoch, args)
-        cls_train(train_loader, model, criterion, optimizer, epoch, args)
+        model.train()
+        loss_val, acc1_val = 0, 0
+        n = 0
+        for i, (images, target) in enumerate(train_loader):
+            if (not args.no_cuda) and torch.cuda.is_available():
+                images = images.cuda(args.gpu_id, non_blocking=True)
+                target = target.cuda(args.gpu_id, non_blocking=True)
+
+            output = model(images)
+            loss = criterion(output, target)
+            acc1 = accuracy(output, target)
+            n += images.size(0)
+            loss_val += float(loss.item() * images.size(0))
+            acc1_val += float(acc1[0] * images.size(0))
+
+            writer.add_scalar('Loss/train', loss, total_iter)
+            writer.add_scalar('Acc/train', acc1[0], total_iter)
+            writer.add_scalar('Learning Rate', optimizer.param_groups[0]['lr'], total_iter)
+
+            optimizer.zero_grad()
+            loss.backward()
+
+            if args.clip_grad_norm > 0:
+                nn.utils.clip_grad_norm_(model.parameters(), max_norm=args.clip_grad_norm, norm_type=2)
+
+            optimizer.step()
+            total_iter+=1
+            if args.print_freq >= 0 and i % args.print_freq == 0:
+                avg_loss, avg_acc1 = (loss_val / n), (acc1_val / n)
+                print(f'[Epoch {epoch + 1}][Train][{i}] \t Loss: {avg_loss:.4e} \t Top-1 {avg_acc1:6.2f}')
+
+
+
         acc1 = cls_validate(val_loader, model, criterion, args, epoch=epoch, time_begin=time_begin)
         best_acc1 = max(acc1, best_acc1)
 
@@ -179,7 +220,7 @@ def main():
     print(f'Script finished in {total_mins:.2f} minutes, '
           f'best top-1: {best_acc1:.2f}, '
           f'final top-1: {acc1:.2f}')
-    torch.save(model.state_dict(), args.checkpoint_path)
+    torch.save(model.state_dict(), run_path+'/'+args.checkpoint_path)
 
 
 def adjust_learning_rate(optimizer, epoch, args):
@@ -207,7 +248,7 @@ def accuracy(output, target):
         return res
 
 
-def cls_train(train_loader, model, criterion, optimizer, epoch, args):
+def cls_train(train_loader, model, criterion, optimizer, epoch, args, writer):
     model.train()
     loss_val, acc1_val = 0, 0
     n = 0

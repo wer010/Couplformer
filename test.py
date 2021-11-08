@@ -3,7 +3,7 @@
 import argparse
 from time import time
 import math
-
+from tqdm import tqdm
 import torch
 import torch.nn as nn
 import torch.optim
@@ -35,7 +35,6 @@ DATASETS = {
     }
 }
 
-
 def init_parser():
     parser = argparse.ArgumentParser(description='CIFAR quick training script')
 
@@ -48,7 +47,7 @@ def init_parser():
                         choices=['cifar10', 'cifar100'],
                         default='cifar10')
 
-    parser.add_argument('-j', '--workers', default=4, type=int, metavar='N',
+    parser.add_argument('-j', '--workers', default=0, type=int, metavar='N',
                         help='number of data loading workers (default: 4)')
 
     parser.add_argument('--print-freq', default=10, type=int, metavar='N',
@@ -58,7 +57,10 @@ def init_parser():
                         type=str,
                         default='checkpoint.pth',
                         help='path to checkpoint (default: checkpoint.pth)')
-
+    parser.add_argument('--model-path',
+                        type=str,
+                        default='checkpoint.pth',
+                        help='path to model (default: model.pth)')
     # Optimization hyperparams
     parser.add_argument('--epochs', default=200, type=int, metavar='N',
                         help='number of total epochs to run')
@@ -107,8 +109,8 @@ def init_parser():
     return parser
 
 
+
 def main():
-    global best_acc1
 
     parser = init_parser()
     args = parser.parse_args()
@@ -123,15 +125,13 @@ def main():
                                         kernel_size=args.conv_size,
                                         patch_size=args.patch_size)
 
-    criterion = LabelSmoothingCrossEntropy()
+    model.load_state_dict(torch.load(args.model_path))
 
     if (not args.no_cuda) and torch.cuda.is_available():
         torch.cuda.set_device(args.gpu_id)
         model.cuda(args.gpu_id)
-        criterion = criterion.cuda(args.gpu_id)
 
-    optimizer = torch.optim.AdamW(model.parameters(), lr=args.lr,
-                                  weight_decay=args.weight_decay)
+
 
     normalize = [transforms.Normalize(mean=img_mean, std=img_std)]
 
@@ -149,38 +149,29 @@ def main():
     ]
 
     augmentations = transforms.Compose(augmentations)
-    train_dataset = datasets.__dict__[args.dataset.upper()](
-        root=args.data, train=True, download=True, transform=augmentations)
+
 
     val_dataset = datasets.__dict__[args.dataset.upper()](
-        root=args.data, train=True, download=True, transform=transforms.Compose([
+        root=args.data, train=False, download=True, transform=transforms.Compose([
             transforms.Resize(img_size),
             transforms.ToTensor(),
             *normalize,
         ]))
-
-    train_loader = torch.utils.data.DataLoader(
-        train_dataset, batch_size=args.batch_size, shuffle=True,
-        num_workers=args.workers)
 
     val_loader = torch.utils.data.DataLoader(
         val_dataset,
         batch_size=args.batch_size, shuffle=True,
         num_workers=args.workers)
 
-    print("Beginning training")
+    print("Beginning testing")
     time_begin = time()
-    for epoch in range(args.epochs):
-        adjust_learning_rate(optimizer, epoch, args)
-        cls_train(train_loader, model, criterion, optimizer, epoch, args)
-        acc1 = cls_validate(val_loader, model, criterion, args, epoch=epoch, time_begin=time_begin)
-        best_acc1 = max(acc1, best_acc1)
+
+
+    acc = cls_validate(val_loader, model,  args)
 
     total_mins = (time() - time_begin) / 60
     print(f'Script finished in {total_mins:.2f} minutes, '
-          f'best top-1: {best_acc1:.2f}, '
-          f'final top-1: {acc1:.2f}')
-    torch.save(model.state_dict(), args.checkpoint_path)
+          f'final top-1: {acc:.2f}%')
 
 
 def adjust_learning_rate(optimizer, epoch, args):
@@ -194,77 +185,25 @@ def adjust_learning_rate(optimizer, epoch, args):
         param_group['lr'] = lr
 
 
-def accuracy(output, target):
-    with torch.no_grad():
-        batch_size = target.size(0)
-
-        _, pred = output.topk(1, 1, True, True)
-        pred = pred.t()
-        correct = pred.eq(target.view(1, -1).expand_as(pred))
-
-        res = []
-        correct_k = correct[:1].flatten().float().sum(0, keepdim=True)
-        res.append(correct_k.mul_(100.0 / batch_size))
-        return res
-
-
-def cls_train(train_loader, model, criterion, optimizer, epoch, args):
-    model.train()
-    loss_val, acc1_val = 0, 0
-    n = 0
-    for i, (images, target) in enumerate(train_loader):
-        if (not args.no_cuda) and torch.cuda.is_available():
-            images = images.cuda(args.gpu_id, non_blocking=True)
-            target = target.cuda(args.gpu_id, non_blocking=True)
-        output = model(images)
-
-        loss = criterion(output, target)
-
-        acc1 = accuracy(output, target)
-        n += images.size(0)
-        loss_val += float(loss.item() * images.size(0))
-        acc1_val += float(acc1[0] * images.size(0))
-
-        optimizer.zero_grad()
-        loss.backward()
-
-        if args.clip_grad_norm > 0:
-            nn.utils.clip_grad_norm_(model.parameters(), max_norm=args.clip_grad_norm, norm_type=2)
-
-        optimizer.step()
-
-        if args.print_freq >= 0 and i % args.print_freq == 0:
-            avg_loss, avg_acc1 = (loss_val / n), (acc1_val / n)
-            print(f'[Epoch {epoch + 1}][Train][{i}] \t Loss: {avg_loss:.4e} \t Top-1 {avg_acc1:6.2f}')
-
-
-def cls_validate(val_loader, model, criterion, args, epoch=None, time_begin=None):
+def cls_validate(val_loader, model, args):
     model.eval()
-    loss_val, acc1_val = 0, 0
-    n = 0
+    correct = 0
+    total = 0
     with torch.no_grad():
-        for i, (images, target) in enumerate(val_loader):
+        for i, (images, target) in tqdm(enumerate(val_loader)):
             if (not args.no_cuda) and torch.cuda.is_available():
                 images = images.cuda(args.gpu_id, non_blocking=True)
                 target = target.cuda(args.gpu_id, non_blocking=True)
 
             output = model(images)
-            loss = criterion(output, target)
 
-            acc1 = accuracy(output, target)
-            n += images.size(0)
-            loss_val += float(loss.item() * images.size(0))
-            acc1_val += float(acc1[0] * images.size(0))
 
-            if args.print_freq >= 0 and i % args.print_freq == 0:
-                avg_loss, avg_acc1 = (loss_val / n), (acc1_val / n)
-                print(f'[Epoch {epoch + 1}][Eval][{i}] \t Loss: {avg_loss:.4e} \t Top-1 {avg_acc1:6.2f}')
+            # since we're not training, we don't need to calculate the gradients for our outputs
+            _, predicted = torch.max(output, 1)
+            total += target.size(0)
+            correct += (predicted == target).sum().item()
 
-    avg_loss, avg_acc1 = (loss_val / n), (acc1_val / n)
-    total_mins = -1 if time_begin is None else (time() - time_begin) / 60
-    print(f'[Epoch {epoch + 1}] \t \t Top-1 {avg_acc1:6.2f} \t \t Time: {total_mins:.2f}')
-
-    return avg_acc1
+    return (100 * correct / total)
 
 
 if __name__ == '__main__':

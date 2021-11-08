@@ -23,60 +23,39 @@ class Attention(Module):
     def forward(self, x):
         B, N, C = x.shape
         #x=(128,64,256)
-        qkv = self.qkv(x).reshape(B, N, 3, self.num_heads, C // self.num_heads).permute(2, 0, 3, 1, 4)
-        #qkv=(3,128,4,64,64)
+        batch, num_head, hw, channel = B, self.num_heads, N, C // self.num_heads
+        height, width = 8,8
+        assert hw == height*width
+
+        qkv = self.qkv(x).reshape(B, N, 3, self.num_heads, C // self.num_heads).permute(2, 0, 3, 1, 4).view(3,batch, num_head, height, width, channel)
+        # 3, batch, heads, n, channel -> 3, batch, heads, height, width, channel
         q, k, v = qkv[0], qkv[1], qkv[2]
-        #q=k=v=(128,4,64,64)
+        # batch, heads, height, width, channel
 
-        #Seperation config
-        batch, num_head, hw, channel =q.shape
-        q_s = q.view(batch, num_head, 8, 8, channel)
-        _, _, height, width, _ = q_s.shape
-        # q_a = q.reshape(batch, num_head, height, width * channel)
-        # q_b = q.reshape(batch, num_head, width, height * channel)
-        q_a = q.permute(0,1,4,2,3)          #batch ,
-        q_b = q.permute(0,1,4,3,2)
 
-        k_s = k.view(batch, num_head, 8, 8, channel)
-        k_a = k.reshape(batch, num_head, height, width * channel)
-        k_b = k.reshape(batch, num_head, width, height * channel)
-
-        v_s = v.permute(0, 1, 3, 2)
-        v_s = v_s.view(batch, num_head, channel, height, width)
-        # print("q_s:",q_s.shape)
-
-        #Kronecker dot muliply
-        A_m = (q_a @ k_a.transpose(-2, -1)) * self.scale
-        A_m = A_m.view(batch, num_head, 1, height, height)
-        A_m = A_m.softmax(dim=-1)
-        A_m = self.attn_drop(A_m)
-
-        B_m = (q_b @ k_b.transpose(-2, -1)) * self.scale
-        B_m = B_m.view(batch, num_head, 1, width, width)
-        B_m = B_m.softmax(dim=-1)
-        B_m = self.attn_drop(B_m)
-        # print("A_matrix", A_m.shape)
+        q_b = q.permute(0,1,3,2,4)
+        k_b = k.permute(0,1,3,2,4)
+        a = q.reshape(batch, num_head, height, width * channel)@ (k.reshape(batch, num_head, height, width * channel).transpose(-2,-1))
+        b = q_b.reshape(batch, num_head, width, height * channel)@ (k_b.reshape(batch, num_head, width, height * channel).transpose(-2,-1))
+        a *= self.scale
+        a = a.softmax(-1)
+        a = self.attn_drop(a)
+        a = a.unsqueeze(2)
+        b *= self.scale
+        b = b.softmax(-1)
+        b = self.attn_drop(b)
+        b = b.unsqueeze(2)
 
         #Attention kronecker matrix times V
-        x = torch.matmul(A_m, v_s)
-        x = torch.matmul(x, B_m)
-        x = x.reshape(batch, num_head, channel, hw).transpose(-2,-1)
-        x = x.reshape(B, N, C)
-        # print("x", x.shape)
+        # batch, heads, height, width, channel->batch, heads, channel, width, height
+        x = v.permute(0,1,4,3,2) @ a.transpose(-2,-1)
+        x = b @ x
+        # batch, heads, channel, width, height->batch, heads, channel, height, width
+        x = x.transpose(-2, -1)
+        x = x.reshape(B, C, N).transpose(-2, -1)
 
-        # attn = (q @ k.transpose(-2, -1)) * self.scale
-        # #attn=(128,4,64,64)
-        # attn = attn.softmax(dim=-1)
-        # #attn=(128,4,64,64)
-        # attn = self.attn_drop(attn)
-        # attn=(128,4,64,64)
-
-        # x = (attn @ v).transpose(1, 2).reshape(B, N, C)
-        #attn @ v=(128,4,64,64),x=(128,64,256)
         x = self.proj(x)
-        # x=(128,64,256)
         x = self.proj_drop(x)
-        # x=(128,64,256)
         return x
 
 
