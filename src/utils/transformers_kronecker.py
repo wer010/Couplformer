@@ -3,7 +3,6 @@ from torch.nn import Module, ModuleList, Linear, Dropout, LayerNorm, Identity, P
 import torch.nn.functional as F
 from .stochastic_depth import DropPath
 
-# TODO: rewrite the attention class and inherit the class to realize our attention mechanism
 class Attention(Module):
     """
     Obtained from timm: github.com:rwightman/pytorch-image-models
