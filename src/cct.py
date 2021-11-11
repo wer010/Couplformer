@@ -127,6 +127,12 @@ def _text_cct(num_layers, num_heads, mlp_ratio, embedding_dim,
                    padding=padding,
                    *args, **kwargs)
 
+def cct_sd(num_layers, num_heads, mlp_ratio, embedding_dim,*args, **kwargs):
+    return _cct(num_layers=num_layers, num_heads=num_heads, mlp_ratio=mlp_ratio, embedding_dim=embedding_dim,
+                *args, **kwargs)
+
+
+
 
 def cct_2(*args, **kwargs):
     return _cct(num_layers=2, num_heads=2, mlp_ratio=1, embedding_dim=128,

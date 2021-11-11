@@ -7,17 +7,16 @@ import argparse
 import os
 import random
 import numpy as np
-
+from datetime import datetime
 from datetime import timedelta
 import torch
 import torch.distributed as dist
-from torch.nn import CrossEntropyLoss
 from tqdm import tqdm
 from torch.utils.tensorboard import SummaryWriter
-from apex import amp
-from apex.parallel import DistributedDataParallel as DDP
+# from apex import amp
+# from apex.parallel import DistributedDataParallel as DDP
 
-from models.modeling import VisionTransformer, CONFIGS
+from utils.modeling import VisionTransformer, CONFIGS
 from utils.scheduler import WarmupLinearSchedule, WarmupCosineSchedule
 from utils.data_utils import get_loader
 from utils.dist_util import get_world_size
@@ -48,16 +47,15 @@ def simple_accuracy(preds, labels):
     return (preds == labels).mean()
 
 
-def save_model(args, model):
+def save_model(args, acc ,step, model):
     model_to_save = model.module if hasattr(model, 'module') else model
-    model_checkpoint = os.path.join(args.output_dir, "%s_checkpoint.bin" % args.name)
+    model_checkpoint = os.path.join(args.output_dir, f"train_iter{step}_with_acc{acc}_checkpoint.bin" )
     torch.save(model_to_save.state_dict(), model_checkpoint)
     logger.info("Saved model checkpoint to [DIR: %s]", args.output_dir)
 
 
 def setup(args):
     # Prepare model
-    config = CONFIGS[args.model_type]
 
     if args.dataset == "cifar10" :
         num_classes = 10
@@ -65,23 +63,20 @@ def setup(args):
         num_classes = 100
     else:
         num_classes = 1000
-
-    model = models.__dict__["cct_14"](img_size=224,
+    # TODO: hyparameter tuning
+    model = models.__dict__[args.model_type](img_size=224,
                                         num_classes=num_classes,
                                         positional_embedding="learnable",
+                                        num_layers= args.num_layers,
+                                        num_heads=args.num_heads,
+                                        mlp_ratio=args.mlp_ratio,
+                                        embedding_dim=args.embedding_dim,
                                         n_conv_layers=2,
-                                        kernel_size=7,
-                                        patch_size=4)
-    # model = VisionTransformer(config, args.img_size, zero_head=True, num_classes=num_classes)
-    #model.load_from(np.load("ViT-B_16.npz"))
-    # state_dict = load_state_dict_from_url('http://ix.cs.uoregon.edu/~alih/compact-transformers/checkpoints/pretrained/cct_14_7x2_224_imagenet.pth',
-    #                                       progress=False)
-    # state_dict = pe_check(model, state_dict)
-    # model.load_state_dict(state_dict)
+                                        kernel_size=3)
+
     model.to(args.device)
     num_params = count_parameters(model)
 
-    logger.info("{}".format(config))
     logger.info("Training parameters %s", args)
     logger.info("Total Parameter: \t%2.1fM" % num_params)
     print(num_params)
@@ -152,18 +147,20 @@ def valid(args, model, writer, test_loader, global_step):
     writer.add_scalar("test/accuracy", scalar_value=accuracy, global_step=global_step)
     return accuracy
 
-
-def train(args, model,device):
+# TODO: warm up epoch and epoch need to modify
+def train(args, model, device):
     """ Train the model """
     if args.local_rank in [-1, 0]:
         os.makedirs(args.output_dir, exist_ok=True)
-        writer = SummaryWriter(log_dir=os.path.join("logs", args.name))
+        writer = SummaryWriter(log_dir=args.output_dir)
 
     args.train_batch_size = args.train_batch_size // args.gradient_accumulation_steps
 
+
+
+
     # Prepare dataset
     train_loader, test_loader = get_loader(args)
-
     # Prepare optimizer and scheduler
     # optimizer = torch.optim.SGD(model.parameters(),
     #                             lr=args.learning_rate,
@@ -174,11 +171,22 @@ def train(args, model,device):
                                 weight_decay=args.weight_decay)
 
 
-    t_total = args.num_steps
+
+
+
+    total_epoch = args.epoch
+    total_batch_size = args.train_batch_size * args.gradient_accumulation_steps * (
+                    torch.distributed.get_world_size() if args.local_rank != -1 else 1)
+    total_step  = total_epoch* round(len(train_loader.dataset)/total_batch_size)
+
+
+
     if args.decay_type == "cosine":
-        scheduler = WarmupCosineSchedule(optimizer, warmup_steps=args.warmup_steps, warmup_lr=args.warmup_lr,t_total=t_total)
+        scheduler = WarmupCosineSchedule(optimizer, warmup_steps=args.warmup_epoch * round(len(train_loader.dataset)/total_batch_size),
+                                         warmup_lr=args.warmup_lr,t_total=total_step)
     else:
-        scheduler = WarmupLinearSchedule(optimizer, warmup_steps=args.warmup_steps, t_total=t_total)
+        scheduler = WarmupLinearSchedule(optimizer, warmup_steps=args.warmup_epoch * round(len(train_loader.dataset)/total_batch_size),
+                                         t_total=total_step)
 
     if args.fp16:
         model, optimizer = amp.initialize(models=model,
@@ -192,17 +200,16 @@ def train(args, model,device):
     #model = nn.DataParallel(model, device_ids=[0,1,2,3,4,5,6]).to(device)
     # Train!
     logger.info("***** Running training *****")
+    logger.info(args)
     logger.info("  Total optimization steps = %d", args.num_steps)
     logger.info("  Instantaneous batch size per GPU = %d", args.train_batch_size)
-    logger.info("  Total train batch size (w. parallel, distributed & accumulation) = %d",
-                args.train_batch_size * args.gradient_accumulation_steps * (
-                    torch.distributed.get_world_size() if args.local_rank != -1 else 1))
-    logger.info("  Gradient Accumulation steps = %d", args.gradient_accumulation_steps)
+    logger.info("  Total train batch size (w. parallel, distributed & accumulation) = %d", total_batch_size)
+    logger.info("Gradient Accumulation steps = %d", args.gradient_accumulation_steps)
 
     model.zero_grad()
     set_seed(args)  # Added here for reproducibility (even between python 2 and 3)
     losses = AverageMeter()
-    global_step, best_acc = 0, 0
+    current_epoch, global_step, best_acc =0, 0, 0
     while True:
         model.train()
         epoch_iterator = tqdm(train_loader,
@@ -216,7 +223,7 @@ def train(args, model,device):
 
             # loss = model(x)
             logits = model(x)
-            loss_fct = CrossEntropyLoss()
+            loss_fct = torch.nn.CrossEntropyLoss()
             loss = loss_fct(logits.view(-1, 1000), y.view(-1))
 
 
@@ -240,49 +247,59 @@ def train(args, model,device):
                 global_step += 1
 
                 epoch_iterator.set_description(
-                    "Training (%d / %d Steps) (loss=%2.5f)" % (global_step, t_total, losses.val)
+                    "Training (%d / %d Steps) (loss=%2.5f)" % (global_step, total_step, losses.val)
                 )
                 if args.local_rank in [-1, 0]:
                     writer.add_scalar("train/loss", scalar_value=losses.val, global_step=global_step)
                     writer.add_scalar("train/lr", scalar_value=scheduler.get_lr()[0], global_step=global_step)
-                if global_step % args.eval_every == 0 and args.local_rank in [-1, 0]:
-                    accuracy = valid(args, model, writer, test_loader, global_step)
-                    if best_acc < accuracy:
-                        save_model(args, model)
-                        best_acc = accuracy
-                    model.train()
+        if (current_epoch+1) % args.eval_every == 0 and args.local_rank in [-1, 0]:
+            accuracy = valid(args, model, writer, test_loader, global_step)
+            if best_acc < accuracy:
+                save_model(args, accuracy, global_step, model)
+                best_acc = accuracy
+            model.train()
 
-                if global_step % t_total == 0:
-                    break
         losses.reset()
-        if global_step % t_total == 0:
+        current_epoch+=1
+        if current_epoch >= total_epoch:
             break
+
 
     if args.local_rank in [-1, 0]:
         writer.close()
     logger.info("Best Accuracy: \t%f" % best_acc)
     logger.info("End Training!")
 
-
-def main():
-
+def init_arg():
     parser = argparse.ArgumentParser()
     # Required parameters
-    parser.add_argument("--name", required=True,
-                        help="Name of this run. Used for monitoring.")
-    parser.add_argument("--dataset", choices=["cifar10", "cifar100","imagenet"], default="imagenet",
+
+    parser.add_argument("--dataset", choices=["cifar10", "cifar100", "imagenet"], default="imagenet",
                         help="Which downstream task.")
     parser.add_argument("--model_type", choices=["ViT-B_16", "ViT-B_32", "ViT-L_16",
-                                                 "ViT-L_32", "ViT-H_14", "R50-ViT-B_16","ViT-B_16-SST"],
+                                                 "ViT-L_32", "ViT-H_14", "R50-ViT-B_16", "ViT-B_16-SST"],
                         default="ViT-B_16",
                         help="Which variant to use.")
     parser.add_argument("--pretrained_dir", type=str, default="ViT-B_16.npz",
                         help="Where to search for pretrained ViT models.")
-    parser.add_argument("--output_dir", default="output", type=str,
-                        help="The output directory where checkpoints will be written.")
 
+
+    parser.add_argument("--num_workers", default=4, type=int,
+                        help="number of workers")
     parser.add_argument("--img_size", default=224, type=int,
                         help="Resolution size")
+
+    parser.add_argument("--num_layers", default=4, type=int,
+                        help="num_layers")
+    parser.add_argument("--num_heads", default=2, type=int,
+                        help="num_heads")
+    parser.add_argument("--mlp_ratio", default=1, type=int,
+                        help="mlp_ratio")
+    parser.add_argument("--embedding_dim", default=128, type=int,
+                        help="embedding_dim")
+
+
+
     parser.add_argument("--train_batch_size", default=100, type=int,
                         help="Total batch size for training.")
     parser.add_argument("--eval_batch_size", default=100, type=int,
@@ -295,11 +312,11 @@ def main():
                         help="The initial learning rate for SGD.")
     parser.add_argument("--weight_decay", default=0.05, type=float,
                         help="Weight deay if we apply some.")
-    parser.add_argument("--num_steps", default=3204*300, type=int,
+    parser.add_argument("--epoch", default= 300, type=int,
                         help="Total number of training epochs to perform.")
     parser.add_argument("--decay_type", choices=["cosine", "linear"], default="cosine",
                         help="How to decay the learning rate.")
-    parser.add_argument("--warmup_steps", default=3204*10, type=int,
+    parser.add_argument("--warmup_epoch", default= 10, type=int,
                         help="Step of training to perform learning rate warmup for.")
     parser.add_argument("--warmup_lr", default=0.001, type=int,
                         help="lr of training to perform learning rate warmup for.")
@@ -321,6 +338,17 @@ def main():
                              "0 (default value): dynamic loss scaling.\n"
                              "Positive power of 2: static loss scaling value.\n")
     args = parser.parse_args()
+    return args
+
+
+def main():
+
+    args = init_arg()
+
+    args.name = args.model + '_' + args.dataset
+    args.output_dir = './runs/' + datetime.now().strftime("%Y-%b-%d_%H:%M:%S") + '_' + args.name
+
+
 
     # Setup CUDA, GPU & distributed training
     if args.local_rank == -1:
@@ -348,7 +376,7 @@ def main():
     args, model = setup(args)
 
     # Training
-    train(args, model,device)
+    train(args, model, device)
 
 
 if __name__ == "__main__":

@@ -69,7 +69,9 @@ def _kct(num_layers, num_heads, mlp_ratio, embedding_dim,
                *args, **kwargs)
 
 
-
+def kct_sd(num_layers, num_heads, mlp_ratio, embedding_dim,*args, **kwargs):
+    return _kct(num_layers=num_layers, num_heads=num_heads, mlp_ratio=mlp_ratio, embedding_dim=embedding_dim,
+                *args, **kwargs)
 
 def kct_2(*args, **kwargs):
     return _kct(num_layers=2, num_heads=2, mlp_ratio=1, embedding_dim=128,
