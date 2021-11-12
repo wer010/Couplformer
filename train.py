@@ -12,7 +12,6 @@ import torch.utils.data
 import torchvision.transforms as transforms
 import torchvision.datasets as datasets
 from torch.utils.tensorboard import SummaryWriter
-
 import src as models
 from utils.losses import LabelSmoothingCrossEntropy
 
@@ -62,7 +61,7 @@ def init_parser():
                         help='path to checkpoint (default: checkpoint.pth)')
 
     # Optimization hyperparams
-    parser.add_argument('--epochs', default=200, type=int, metavar='N',
+    parser.add_argument('--epochs', default=50, type=int, metavar='N',
                         help='number of total epochs to run')
     parser.add_argument('--warmup', default=5, type=int, metavar='N',
                         help='number of warmup epochs')
@@ -126,6 +125,7 @@ def main():
                                         patch_size=args.patch_size)
     criterion = LabelSmoothingCrossEntropy()
 
+
     ctime = datetime.now()
     run_path = './runs/' + ctime.strftime("%Y-%b-%d_%H:%M:%S") + '_' + args.model+'_' + args.dataset
     if not os.path.exists(run_path):
@@ -177,8 +177,9 @@ def main():
 
     print("Beginning training")
     total_iter = 0
-    time_begin = time()
+
     for epoch in range(args.epochs):
+        time_begin = time()
         adjust_learning_rate(optimizer, epoch, args)
         model.train()
         loss_val, acc1_val = 0, 0
@@ -216,9 +217,9 @@ def main():
         acc1 = cls_validate(val_loader, model, criterion, args, epoch=epoch, time_begin=time_begin)
         best_acc1 = max(acc1, best_acc1)
 
-    total_mins = (time() - time_begin) / 60
-    print(f'Script finished in {total_mins:.2f} minutes, '
-          f'best top-1: {best_acc1:.2f}, '
+        total_mins = (time() - time_begin) / 60
+        print(f'Epoch finished in {total_mins:.2f} minutes, ')
+    print(f'best top-1: {best_acc1:.2f}, '
           f'final top-1: {acc1:.2f}')
     torch.save(model.state_dict(), run_path+'/'+args.checkpoint_path)
 
