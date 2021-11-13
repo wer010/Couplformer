@@ -3,7 +3,7 @@ from .utils.transformers_kronecker import TransformerClassifier, MaskedTransform
 from .utils.tokenizer import Tokenizer, TextTokenizer
 from .utils.embedder import Embedder
 
-__all__ = ['kct_2', 'kct_4', 'kct_6', 'kct_7', 'kct_8',
+__all__ = ['kct_sd','kct_2', 'kct_4', 'kct_6', 'kct_7', 'kct_8',
            'kct_14', 'kct_16'
            ]
 

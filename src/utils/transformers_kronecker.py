@@ -23,7 +23,7 @@ class Attention(Module):
         B, N, C = x.shape
         #x=(128,64,256)
         batch, num_head, hw, channel = B, self.num_heads, N, C // self.num_heads
-        height, width = int(np.sqrt(N))
+        height, width = int(np.sqrt(N)), int(np.sqrt(N))
         assert hw == height*width
 
         qkv = self.qkv(x).reshape(B, N, 3, self.num_heads, C // self.num_heads).permute(2, 0, 3, 1, 4).view(3,batch, num_head, height, width, channel)
