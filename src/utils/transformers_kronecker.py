@@ -23,7 +23,7 @@ class Attention(Module):
         B, N, C = x.shape
         #x=(128,64,256)
         batch, num_head, hw, channel = B, self.num_heads, N, C // self.num_heads
-        height, width = int(np.sqrt(N)), int(np.sqrt(N))
+        height, width = int(np.sqrt(N)),int(np.sqrt(N))
         assert hw == height*width
 
         qkv = self.qkv(x).reshape(B, N, 3, self.num_heads, C // self.num_heads).permute(2, 0, 3, 1, 4).view(3,batch, num_head, height, width, channel)
@@ -46,11 +46,11 @@ class Attention(Module):
         b = b.unsqueeze(2)
 
         #Attention kronecker matrix times V
-        # batch, heads, height, width, channel->batch, heads, channel, width, height
-        x = v.permute(0,1,4,3,2) @ a.transpose(-2,-1)
-        x = b @ x
+        # batch, heads, height, width, channel->batch, heads, channel, height, width
+        x = v.permute(0,1,4,2,3) @ b.transpose(-2,-1)
+        x = a @ x
         # batch, heads, channel, width, height->batch, heads, channel, height, width
-        x = x.transpose(-2, -1)
+
         x = x.reshape(B, C, N).transpose(-2, -1)
 
         x = self.proj(x)
