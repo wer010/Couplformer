@@ -167,10 +167,6 @@ def train(args, model, device):
                                 lr=args.learning_rate,
                                 weight_decay=args.weight_decay)
 
-
-
-
-
     total_epoch = args.epoch
     total_batch_size = args.train_batch_size * args.gradient_accumulation_steps * (
                     torch.distributed.get_world_size() if args.local_rank != -1 else 1)
