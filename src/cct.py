@@ -3,7 +3,7 @@ from .utils.transformers import TransformerClassifier, MaskedTransformerClassifi
 from .utils.tokenizer import Tokenizer, TextTokenizer
 from .utils.embedder import Embedder
 
-__all__ = ['cct_2', 'cct_4', 'cct_6', 'cct_7', 'cct_8',
+__all__ = ['cct_sd','cct_2', 'cct_4', 'cct_6', 'cct_7', 'cct_8',
            'cct_14', 'cct_16',
            'text_cct_2', 'text_cct_4', 'text_cct_6'
            ]
