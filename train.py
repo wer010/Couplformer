@@ -37,88 +37,97 @@ DATASETS = {
 }
 
 
-def init_parser():
-    parser = argparse.ArgumentParser(description='CIFAR quick training script')
-
-    # Data args
+def init_arg():
+    parser = argparse.ArgumentParser()
+    # Required parameters
     parser.add_argument('data', metavar='DIR',
                         help='path to dataset')
+    parser.add_argument("--dataset", choices=["cifar10", "cifar100", "imagenet"], default="imagenet",
+                        help="Which downstream task.")
+    parser.add_argument("--model_type",
+                        default="cct_sd",
+                        help="Which variant to use.")
+    parser.add_argument("--pretrained_dir", type=str, default="ViT-B_16.npz",
+                        help="Where to search for pretrained ViT models.")
 
-    parser.add_argument('--dataset',
-                        type=str.lower,
-                        choices=['cifar10', 'cifar100'],
-                        default='cifar10')
+    parser.add_argument("--num_workers", default=4, type=int,
+                        help="number of workers")
+    parser.add_argument("--img_size", default=224, type=int,
+                        help="Resolution size")
 
-    parser.add_argument('-j', '--workers', default=4, type=int, metavar='N',
-                        help='number of data loading workers (default: 4)')
-
-    parser.add_argument('--print-freq', default=200, type=int, metavar='N',
-                        help='log frequency (by iteration)')
-
-    parser.add_argument('--checkpoint-path',
-                        type=str,
-                        default='checkpoint.pth',
-                        help='path to checkpoint (default: checkpoint.pth)')
-
-    # Optimization hyperparams
-    parser.add_argument('--epochs', default=50, type=int, metavar='N',
-                        help='number of total epochs to run')
-    parser.add_argument('--warmup', default=5, type=int, metavar='N',
-                        help='number of warmup epochs')
-    parser.add_argument('-b', '--batch-size', default=128, type=int,
-                        metavar='N',
-                        help='mini-batch size (default: 128)', dest='batch_size')
-    parser.add_argument('--lr', default=0.0005, type=float,
-                        help='initial learning rate')
-    parser.add_argument('--weight-decay', default=3e-2, type=float,
-                        help='weight decay (default: 1e-4)')
-    parser.add_argument('--clip-grad-norm', default=0., type=float,
-                        help='gradient norm clipping (default: 0 (disabled))')
-
-    parser.add_argument('-m', '--model',
-                        type=str.lower,
-                        choices=model_names,
-                        default='cct_2', dest='model')
-
+    parser.add_argument("--num_layers", default=4, type=int,
+                        help="num_layers")
+    parser.add_argument("--num_heads", default=2, type=int,
+                        help="num_heads")
+    parser.add_argument("--mlp_ratio", default=1, type=int,
+                        help="mlp_ratio")
+    parser.add_argument("--embedding_dim", default=128, type=int,
+                        help="embedding_dim")
     parser.add_argument('-p', '--positional-embedding',
                         type=str.lower,
                         choices=['learnable', 'sine', 'none'],
                         default='learnable', dest='positional_embedding')
 
-    parser.add_argument('--conv-layers', default=2, type=int,
-                        help='number of convolutional layers (cct only)')
+    parser.add_argument("--train_batch_size", default=100, type=int,
+                        help="Total batch size for training.")
+    parser.add_argument("--eval_batch_size", default=20, type=int,
+                        help="Total batch size for eval.")
+    parser.add_argument("--eval_every", default=1602, type=int,
+                        help="Run prediction on validation set every so many steps."
+                             "Will always run one evaluation at the end of training.")
+    parser.add_argument("--pretrain", default=None, type=str,
+                        help="path of pretrain model")
 
-    parser.add_argument('--conv-size', default=3, type=int,
-                        help='convolution kernel size (cct only)')
 
-    parser.add_argument('--patch-size', default=4, type=int,
-                        help='image patch size (vit and cvt only)')
+    parser.add_argument("--learning_rate", default=0.0005, type=float,
+                        help="The initial learning rate for SGD.")
+    parser.add_argument("--weight_decay", default=0.05, type=float,
+                        help="Weight deay if we apply some.")
 
-    parser.add_argument('--disable-cos', action='store_true',
-                        help='disable cosine lr schedule')
-    parser.add_argument('--pretrain', default=None ,type=str,
-                        help='path of pretrained model')
+    parser.add_argument('--clip-grad-norm', default=0., type=float,
+                        help='gradient norm clipping (default: 0 (disabled))')
+
+    parser.add_argument("--epoch", default=50, type=int,
+                        help="Total number of training epochs to perform.")
+    parser.add_argument("--decay_type", choices=["cosine", "linear"], default="cosine",
+                        help="How to decay the learning rate.")
+    parser.add_argument("--warmup_epoch", default= 10, type=int,
+                        help="Step of training to perform learning rate warmup for.")
+    parser.add_argument("--warmup_lr", default=0.001, type=float,
+                        help="lr of training to perform learning rate warmup for.")
+    parser.add_argument("--max_grad_norm", default=1.0, type=float,
+                        help="Max gradient norm.")
+    parser.add_argument("--local_rank", type=int, default=-1,
+                        help="local_rank for distributed training on gpus")
+    parser.add_argument('--seed', type=int, default=42,
+                        help="random seed for initialization")
+    parser.add_argument('--gradient_accumulation_steps', type=int, default=1,
+                        help="Number of updates steps to accumulate before performing a backward/update pass.")
+    parser.add_argument('--fp16', action='store_true',
+                        help="Whether to use 16-bit float precision instead of 32-bit")
+    parser.add_argument('--fp16_opt_level', type=str, default='O2',
+                        help="For fp16: Apex AMP optimization level selected in ['O0', 'O1', 'O2', and 'O3']."
+                             "See details at https://nvidia.github.io/apex/amp.html")
+    parser.add_argument('--loss_scale', type=float, default=0,
+                        help="Loss scaling to improve fp16 numeric stability. Only used when fp16 set to True.\n"
+                             "0 (default value): dynamic loss scaling.\n"
+                             "Positive power of 2: static loss scaling value.\n")
     parser.add_argument('--disable-aug', action='store_true',
                         help='disable augmentation policies for training')
 
-    parser.add_argument('--gpu-id', default=0, type=int)
-
-    parser.add_argument('--no-cuda', action='store_true',
-                        help='disable cuda')
-
-    return parser
+    args = parser.parse_args()
+    return args
 
 
 def main():
     global best_acc1
 
-    parser = init_parser()
-    args = parser.parse_args()
+    args = init_arg()
     img_size = DATASETS[args.dataset]['img_size']
     num_classes = DATASETS[args.dataset]['num_classes']
     img_mean, img_std = DATASETS[args.dataset]['mean'], DATASETS[args.dataset]['std']
     img_size = 224
-    model = models.__dict__[args.model](img_size=img_size,
+    model = models.__dict__[args.model_type](img_size=img_size,
                                         num_classes=num_classes,
                                         positional_embedding=args.positional_embedding,
                                         num_layers=args.num_layers,
@@ -130,20 +139,25 @@ def main():
     criterion = LabelSmoothingCrossEntropy()
 
     if args.pretrain is not None:
-        model.load_state_dict(torch.load(args.pretrain))
+        model_dict = model.state_dict()
+        model_dict.pop('classifier.fc.weight')
+        model_dict.pop('classifier.fc.bias')
+        pretrained_dict = {k: v for k, v in torch.load(args.pretrain).items() if k in model_dict}
+
+        model.load_state_dict(pretrained_dict,strict=False)
 
     ctime = datetime.now()
-    run_path = './runs/' + ctime.strftime("%Y-%b-%d_%H:%M:%S") + '_' + args.model+'_' + args.dataset
+    run_path = './runs/' + ctime.strftime("%Y-%b-%d_%H:%M:%S") + '_' + args.model_type+'_' + args.dataset
     if not os.path.exists(run_path):
         os.mkdir(run_path)
 
     writer = SummaryWriter(run_path)
-    if (not args.no_cuda) and torch.cuda.is_available():
-        torch.cuda.set_device(args.gpu_id)
-        model.cuda(args.gpu_id)
-        criterion = criterion.cuda(args.gpu_id)
+    if torch.cuda.is_available():
+        torch.cuda.set_device(0)
+        model.cuda(0)
+        criterion = criterion.cuda(0)
 
-    optimizer = torch.optim.AdamW(model.parameters(), lr=args.lr,
+    optimizer = torch.optim.AdamW(model.parameters(), lr=args.learning_rate,
                                   weight_decay=args.weight_decay)
 
     normalize = [transforms.Normalize(mean=img_mean, std=img_std)]
@@ -155,9 +169,9 @@ def main():
             CIFAR10Policy()
         ]
     augmentations += [
-        transforms.RandomCrop(img_size, padding=4),
+        transforms.RandomCrop(32, padding=4),
         transforms.RandomHorizontalFlip(),
-        transforms.Resize([224,224]),
+        transforms.Resize(224),
         transforms.ToTensor(),
         *normalize,
     ]
@@ -176,18 +190,18 @@ def main():
         ]))
 
     train_loader = torch.utils.data.DataLoader(
-        train_dataset, batch_size=args.batch_size, shuffle=True,
-        num_workers=args.workers)
+        train_dataset, batch_size=args.train_batch_size, shuffle=True,
+        num_workers=args.num_workers)
 
     val_loader = torch.utils.data.DataLoader(
         val_dataset,
-        batch_size=args.batch_size, shuffle=True,
-        num_workers=args.workers)
+        batch_size=args.eval_batch_size, shuffle=True,
+        num_workers=args.num_workers)
 
     print("Beginning training")
     total_iter = 0
 
-    for epoch in range(args.epochs):
+    for epoch in range(args.epoch):
         time_begin = time()
         if args.pretrain is None:
             adjust_learning_rate(optimizer, epoch, args)
@@ -195,9 +209,9 @@ def main():
         loss_val, acc1_val = 0, 0
         n = 0
         for i, (images, target) in enumerate(train_loader):
-            if (not args.no_cuda) and torch.cuda.is_available():
-                images = images.cuda(args.gpu_id, non_blocking=True)
-                target = target.cuda(args.gpu_id, non_blocking=True)
+            if torch.cuda.is_available():
+                images = images.cuda(0, non_blocking=True)
+                target = target.cuda(0, non_blocking=True)
 
             output = model(images)
             loss = criterion(output, target)
@@ -218,26 +232,24 @@ def main():
 
             optimizer.step()
             total_iter+=1
-            if args.print_freq >= 0 and i % args.print_freq == 0:
+            if i % 100 == 0:
                 avg_loss, avg_acc1 = (loss_val / n), (acc1_val / n)
                 print(f'[Epoch {epoch + 1}][Train][{i}] \t Loss: {avg_loss:.4e} \t Top-1 {avg_acc1:6.2f}')
 
-        acc1 = cls_validate(val_loader, model, criterion, args, epoch=epoch, time_begin=time_begin)
+        acc1 = cls_validate(val_loader, model, criterion, epoch)
         best_acc1 = max(acc1, best_acc1)
-
         total_mins = (time() - time_begin) / 60
-        print(f'Epoch finished in {total_mins:.2f} minutes, ')
-    print(f'best top-1: {best_acc1:.2f}, '
-          f'final top-1: {acc1:.2f}')
-    torch.save(model.state_dict(), run_path+'/'+args.checkpoint_path)
+        print(f'Epoch finished in {total_mins:.2f} minutes, with best acc {best_acc1:.2f} and final acc{acc1:.2f}')
+
+    torch.save(model.state_dict(), run_path+'/'+'checkpoint.pth')
 
 
 def adjust_learning_rate(optimizer, epoch, args):
-    lr = args.lr
+    lr = args.learning_rate
     if hasattr(args, 'warmup') and epoch < args.warmup:
         lr = lr / (args.warmup - epoch)
     elif not args.disable_cos:
-        lr *= 0.5 * (1. + math.cos(math.pi * (epoch - args.warmup) / (args.epochs - args.warmup)))
+        lr *= 0.5 * (1. + math.cos(math.pi * (epoch - args.warmup) / (args.epoch - args.warmup)))
 
     for param_group in optimizer.param_groups:
         param_group['lr'] = lr
@@ -287,15 +299,16 @@ def cls_train(train_loader, model, criterion, optimizer, epoch, args, writer):
             print(f'[Epoch {epoch + 1}][Train][{i}] \t Loss: {avg_loss:.4e} \t Top-1 {avg_acc1:6.2f}')
 
 
-def cls_validate(val_loader, model, criterion, args, epoch=None, time_begin=None):
+def cls_validate(val_loader, model, criterion,  epoch=None):
     model.eval()
     loss_val, acc1_val = 0, 0
     n = 0
+    time_begin = time()
     with torch.no_grad():
         for i, (images, target) in enumerate(val_loader):
-            if (not args.no_cuda) and torch.cuda.is_available():
-                images = images.cuda(args.gpu_id, non_blocking=True)
-                target = target.cuda(args.gpu_id, non_blocking=True)
+            if torch.cuda.is_available():
+                images = images.cuda(0, non_blocking=True)
+                target = target.cuda(0, non_blocking=True)
 
             output = model(images)
             loss = criterion(output, target)
@@ -304,10 +317,6 @@ def cls_validate(val_loader, model, criterion, args, epoch=None, time_begin=None
             n += images.size(0)
             loss_val += float(loss.item() * images.size(0))
             acc1_val += float(acc1[0] * images.size(0))
-
-            if args.print_freq >= 0 and i % args.print_freq == 0:
-                avg_loss, avg_acc1 = (loss_val / n), (acc1_val / n)
-                print(f'[Epoch {epoch + 1}][Eval][{i}] \t Loss: {avg_loss:.4e} \t Top-1 {avg_acc1:6.2f}')
 
     avg_loss, avg_acc1 = (loss_val / n), (acc1_val / n)
     total_mins = -1 if time_begin is None else (time() - time_begin) / 60
