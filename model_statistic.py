@@ -14,8 +14,7 @@ import torchvision.datasets as datasets
 from torch.utils.tensorboard import SummaryWriter
 import src as models
 from utils.losses import LabelSmoothingCrossEntropy
-from thop import profile
-
+from thop import profile,clever_format
 model_names = sorted(name for name in models.__dict__
                      if name.islower() and not name.startswith("_")
                      and callable(models.__dict__[name]))
@@ -88,7 +87,7 @@ def init_parser():
     parser.add_argument('--conv-layers', default=2, type=int,
                         help='number of convolutional layers (cct only)')
 
-    parser.add_argument('--conv-size', default=3, type=int,
+    parser.add_argument('--conv-size', default=7, type=int,
                         help='convolution kernel size (cct only)')
 
     parser.add_argument('--patch-size', default=4, type=int,
@@ -117,21 +116,20 @@ def main():
     num_classes = DATASETS[args.dataset]['num_classes']
     img_mean, img_std = DATASETS[args.dataset]['mean'], DATASETS[args.dataset]['std']
 
+    with open('./model_statistic.txt','w') as f:
+        for n in model_names:
+            if n in ['cct_sd', 'kct_sd']:
+                continue
+            model = models.__dict__[n](img_size=224,
+                                                num_classes=1000,
+                                                positional_embedding=args.positional_embedding,
+                                                n_conv_layers=args.conv_layers,
+                                                kernel_size=args.conv_size)
 
-    for n in model_names:
-        if n in ['cct_sd', 'kct_sd']:
-            continue
-        model = models.__dict__[n](img_size=224,
-                                            num_classes=1000,
-                                            positional_embedding=args.positional_embedding,
-                                            n_conv_layers=args.conv_layers,
-                                            kernel_size=args.conv_size,
-                                            patch_size=args.patch_size)
-        criterion = LabelSmoothingCrossEntropy()
-
-        input = torch.randn(1, 3, 224, 224)
-        macs, params = profile(model, inputs=(input,))
-        print(f'{n} model Macs is {macs}, params is {params}')
+            input = torch.randn(1, 3, 224, 224)
+            macs, params = profile(model, inputs=(input,))
+            macs, params = clever_format([macs, params], "%.3f")
+            f.write(f'{n} model Macs is {macs}, params is {params}\r\n')
 
 
 

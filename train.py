@@ -96,7 +96,8 @@ def init_parser():
 
     parser.add_argument('--disable-cos', action='store_true',
                         help='disable cosine lr schedule')
-
+    parser.add_argument('--pretrain', default=None ,type=str,
+                        help='path of pretrained model')
     parser.add_argument('--disable-aug', action='store_true',
                         help='disable augmentation policies for training')
 
@@ -116,15 +117,20 @@ def main():
     img_size = DATASETS[args.dataset]['img_size']
     num_classes = DATASETS[args.dataset]['num_classes']
     img_mean, img_std = DATASETS[args.dataset]['mean'], DATASETS[args.dataset]['std']
-
+    img_size = 224
     model = models.__dict__[args.model](img_size=img_size,
                                         num_classes=num_classes,
                                         positional_embedding=args.positional_embedding,
-                                        n_conv_layers=args.conv_layers,
-                                        kernel_size=args.conv_size,
-                                        patch_size=args.patch_size)
+                                        num_layers=args.num_layers,
+                                        num_heads=args.num_heads,
+                                        mlp_ratio=args.mlp_ratio,
+                                        embedding_dim=args.embedding_dim,
+                                        n_conv_layers=2,
+                                        kernel_size=7)
     criterion = LabelSmoothingCrossEntropy()
 
+    if args.pretrain is not None:
+        model.load_state_dict(torch.load(args.pretrain))
 
     ctime = datetime.now()
     run_path = './runs/' + ctime.strftime("%Y-%b-%d_%H:%M:%S") + '_' + args.model+'_' + args.dataset
@@ -151,9 +157,12 @@ def main():
     augmentations += [
         transforms.RandomCrop(img_size, padding=4),
         transforms.RandomHorizontalFlip(),
+        transforms.Resize([224,224]),
         transforms.ToTensor(),
         *normalize,
     ]
+
+
 
     augmentations = transforms.Compose(augmentations)
     train_dataset = datasets.__dict__[args.dataset.upper()](
@@ -180,7 +189,8 @@ def main():
 
     for epoch in range(args.epochs):
         time_begin = time()
-        adjust_learning_rate(optimizer, epoch, args)
+        if args.pretrain is None:
+            adjust_learning_rate(optimizer, epoch, args)
         model.train()
         loss_val, acc1_val = 0, 0
         n = 0
@@ -211,8 +221,6 @@ def main():
             if args.print_freq >= 0 and i % args.print_freq == 0:
                 avg_loss, avg_acc1 = (loss_val / n), (acc1_val / n)
                 print(f'[Epoch {epoch + 1}][Train][{i}] \t Loss: {avg_loss:.4e} \t Top-1 {avg_acc1:6.2f}')
-
-
 
         acc1 = cls_validate(val_loader, model, criterion, args, epoch=epoch, time_begin=time_begin)
         best_acc1 = max(acc1, best_acc1)
