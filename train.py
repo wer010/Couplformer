@@ -248,8 +248,8 @@ def adjust_learning_rate(optimizer, epoch, args):
     lr = args.learning_rate
     if hasattr(args, 'warmup') and epoch < args.warmup:
         lr = lr / (args.warmup - epoch)
-    elif not args.disable_cos:
-        lr *= 0.5 * (1. + math.cos(math.pi * (epoch - args.warmup) / (args.epoch - args.warmup)))
+    elif args.decay_type=='cosine':
+        lr *= 0.5 * (1. + math.cos(math.pi * (epoch - args.warmup_epoch) / (args.epoch - args.warmup_epoch)))
 
     for param_group in optimizer.param_groups:
         param_group['lr'] = lr

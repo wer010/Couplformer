@@ -48,9 +48,9 @@ class CCT(nn.Module):
             stochastic_depth=0.1,
             *args, **kwargs)
 
-    def forward(self, x,register_hook=False):
+    def forward(self, x):
         x = self.tokenizer(x)
-        return self.classifier(x,register_hook=False)
+        return self.classifier(x)
 
 
 class TextCCT(nn.Module):

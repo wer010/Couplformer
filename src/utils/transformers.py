@@ -20,7 +20,7 @@ class Attention(Module):
         self.proj = Linear(dim, dim)
         self.proj_drop = Dropout(projection_dropout)
 
-    def forward(self, x, register_hook=False):
+    def forward(self, x):
         B, N, C = x.shape
         qkv = self.qkv(x).reshape(B, N, 3, self.num_heads, C // self.num_heads).permute(2, 0, 3, 1, 4)
         q, k, v = qkv[0], qkv[1], qkv[2]
@@ -29,8 +29,7 @@ class Attention(Module):
         attn = attn.softmax(dim=-1)
         attn = self.attn_drop(attn)
 
-        if register_hook:
-            attn.register_hook(self.save_attn_gradients)
+
 
         x = (attn @ v).transpose(1, 2).reshape(B, N, C)
         x = self.proj(x)
@@ -95,8 +94,8 @@ class TransformerEncoderLayer(Module):
 
         self.activation = F.gelu
 
-    def forward(self, src: torch.Tensor, register_hook=False,*args, **kwargs) -> torch.Tensor:
-        src = src + self.drop_path(self.self_attn(self.pre_norm(src),register_hook=False))
+    def forward(self, src: torch.Tensor, *args, **kwargs) -> torch.Tensor:
+        src = src + self.drop_path(self.self_attn(self.pre_norm(src)))
         src = self.norm1(src)
         src2 = self.linear2(self.dropout1(self.activation(self.linear1(src))))
         src = src + self.drop_path(self.dropout2(src2))
@@ -189,7 +188,7 @@ class TransformerClassifier(Module):
         self.fc = Linear(embedding_dim, num_classes)
         self.apply(self.init_weight)
 
-    def forward(self, x,register_hook=False):
+    def forward(self, x):
         if self.positional_emb is None and x.size(1) < self.sequence_length:
             x = F.pad(x, (0, 0, 0, self.n_channels - x.size(1)), mode='constant', value=0)
 
@@ -203,7 +202,7 @@ class TransformerClassifier(Module):
         x = self.dropout(x)
 
         for blk in self.blocks:
-            x = blk(x ,register_hook=False)
+            x = blk(x)
         x = self.norm(x)
 
         if self.seq_pool:
