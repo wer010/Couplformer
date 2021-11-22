@@ -13,8 +13,8 @@ import torch
 import torch.distributed as dist
 from tqdm import tqdm
 from torch.utils.tensorboard import SummaryWriter
-# from apex import amp
-# from apex.parallel import DistributedDataParallel as DDP
+from apex import amp
+from apex.parallel import DistributedDataParallel as DDP
 
 from utils.scheduler import WarmupLinearSchedule, WarmupCosineSchedule
 from utils.data_utils import get_loader
@@ -22,7 +22,7 @@ from utils.dist_util import get_world_size
 import src as models
 
 logger = logging.getLogger(__name__)
-
+CUDA_VISIBLE_DEVICES=0,1,2,3
 
 class AverageMeter(object):
     """Computes and stores the average and current value"""
@@ -71,14 +71,13 @@ def setup(args):
                                         mlp_ratio=args.mlp_ratio,
                                         embedding_dim=args.embedding_dim,
                                         n_conv_layers=2,
-                                        kernel_size=3)
+                                        kernel_size=7)
 
     model.to(args.device)
     num_params = count_parameters(model)
 
     logger.info("Training parameters %s", args)
     logger.info("Total Parameter: \t%2.1fM" % num_params)
-    print(num_params)
     return args, model
 
 
@@ -146,7 +145,6 @@ def valid(args, model, writer, test_loader, global_step):
     writer.add_scalar("test/accuracy", scalar_value=accuracy, global_step=global_step)
     return accuracy
 
-# TODO: warm up epoch and epoch need to modify
 def train(args, model, device):
     """ Train the model """
     if args.local_rank in [-1, 0]:
@@ -168,10 +166,6 @@ def train(args, model, device):
     optimizer = torch.optim.AdamW(model.parameters(),
                                 lr=args.learning_rate,
                                 weight_decay=args.weight_decay)
-
-
-
-
 
     total_epoch = args.epoch
     total_batch_size = args.train_batch_size * args.gradient_accumulation_steps * (
@@ -200,7 +194,7 @@ def train(args, model, device):
     # Train!
     logger.info("***** Running training *****")
     logger.info(args)
-    logger.info("  Total optimization steps = %d", args.num_steps)
+    logger.info("  Total optimization steps = %d", total_step)
     logger.info("  Instantaneous batch size per GPU = %d", args.train_batch_size)
     logger.info("  Total train batch size (w. parallel, distributed & accumulation) = %d", total_batch_size)
     logger.info("Gradient Accumulation steps = %d", args.gradient_accumulation_steps)
@@ -275,13 +269,11 @@ def init_arg():
 
     parser.add_argument("--dataset", choices=["cifar10", "cifar100", "imagenet"], default="imagenet",
                         help="Which downstream task.")
-    parser.add_argument("--model_type", choices=["ViT-B_16", "ViT-B_32", "ViT-L_16",
-                                                 "ViT-L_32", "ViT-H_14", "R50-ViT-B_16", "ViT-B_16-SST"],
-                        default="ViT-B_16",
+    parser.add_argument("--model_type",
+                        default="cct_sd",
                         help="Which variant to use.")
     parser.add_argument("--pretrained_dir", type=str, default="ViT-B_16.npz",
                         help="Where to search for pretrained ViT models.")
-
 
     parser.add_argument("--num_workers", default=4, type=int,
                         help="number of workers")
@@ -311,13 +303,13 @@ def init_arg():
                         help="The initial learning rate for SGD.")
     parser.add_argument("--weight_decay", default=0.05, type=float,
                         help="Weight deay if we apply some.")
-    parser.add_argument("--epoch", default= 300, type=int,
+    parser.add_argument("--epoch", default=300, type=int,
                         help="Total number of training epochs to perform.")
     parser.add_argument("--decay_type", choices=["cosine", "linear"], default="cosine",
                         help="How to decay the learning rate.")
     parser.add_argument("--warmup_epoch", default= 10, type=int,
                         help="Step of training to perform learning rate warmup for.")
-    parser.add_argument("--warmup_lr", default=0.001, type=int,
+    parser.add_argument("--warmup_lr", default=0.001, type=float,
                         help="lr of training to perform learning rate warmup for.")
     parser.add_argument("--max_grad_norm", default=1.0, type=float,
                         help="Max gradient norm.")
@@ -344,7 +336,7 @@ def main():
 
     args = init_arg()
 
-    args.name = args.model + '_' + args.dataset
+    args.name = args.model_type + '_' + args.dataset
     args.output_dir = './runs/' + datetime.now().strftime("%Y-%b-%d_%H:%M:%S") + '_' + args.name
 
 
