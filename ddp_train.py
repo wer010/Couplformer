@@ -63,7 +63,7 @@ def setup(args):
     else:
         num_classes = 1000
     # TODO: hyparameter tuning
-    model = models.__dict__[args.model_type](img_size=224,
+    model = models.__dict__[args.model_type](img_size=args.img_size,
                                         num_classes=num_classes,
                                         positional_embedding="learnable",
                                         num_layers= args.num_layers,
@@ -277,7 +277,7 @@ def init_arg():
 
     parser.add_argument("--num_workers", default=4, type=int,
                         help="number of workers")
-    parser.add_argument("--img_size", default=224, type=int,
+    parser.add_argument("--img_size", default=384, type=int,
                         help="Resolution size")
 
     parser.add_argument("--num_layers", default=4, type=int,

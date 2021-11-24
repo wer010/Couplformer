@@ -126,7 +126,6 @@ def main():
     img_size = DATASETS[args.dataset]['img_size']
     num_classes = DATASETS[args.dataset]['num_classes']
     img_mean, img_std = DATASETS[args.dataset]['mean'], DATASETS[args.dataset]['std']
-    img_size = 224
     model = models.__dict__[args.model_type](img_size=img_size,
                                         num_classes=num_classes,
                                         positional_embedding=args.positional_embedding,
@@ -171,7 +170,7 @@ def main():
     augmentations += [
         transforms.RandomCrop(32, padding=4),
         transforms.RandomHorizontalFlip(),
-        transforms.Resize(224),
+        transforms.Resize(img_size),
         transforms.ToTensor(),
         *normalize,
     ]
