@@ -22,7 +22,7 @@ from utils.dist_util import get_world_size
 import src as models
 
 logger = logging.getLogger(__name__)
-CUDA_VISIBLE_DEVICES=0,1,2,3
+# CUDA_VISIBLE_DEVICES=0,1,2,3
 
 class AverageMeter(object):
     """Computes and stores the average and current value"""
