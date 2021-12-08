@@ -50,7 +50,7 @@ def init_arg():
     parser.add_argument("--pretrained_dir", type=str, default="ViT-B_16.npz",
                         help="Where to search for pretrained ViT models.")
 
-    parser.add_argument("--num_workers", default=4, type=int,
+    parser.add_argument("--num_workers", default=0, type=int,
                         help="number of workers")
     parser.add_argument("--img_size", default=224, type=int,
                         help="Resolution size")
@@ -129,10 +129,10 @@ def main():
     model = models.__dict__[args.model_type](img_size=img_size,
                                         num_classes=num_classes,
                                         positional_embedding=args.positional_embedding,
-                                        num_layers=args.num_layers,
-                                        num_heads=args.num_heads,
-                                        mlp_ratio=args.mlp_ratio,
-                                        embedding_dim=args.embedding_dim,
+                                        # num_layers=args.num_layers,
+                                        # num_heads=args.num_heads,
+                                        # mlp_ratio=args.mlp_ratio,
+                                        # embedding_dim=args.embedding_dim,
                                         n_conv_layers=2,
                                         kernel_size=7)
     criterion = LabelSmoothingCrossEntropy()
@@ -170,7 +170,7 @@ def main():
     augmentations += [
         transforms.RandomCrop(32, padding=4),
         transforms.RandomHorizontalFlip(),
-        transforms.Resize(img_size),
+        transforms.Resize(32),
         transforms.ToTensor(),
         *normalize,
     ]
