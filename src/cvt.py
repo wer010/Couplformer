@@ -94,7 +94,7 @@ class TextCVT(nn.Module):
 
 
 def _cvt(num_layers, num_heads, mlp_ratio, embedding_dim,
-         patch_size=4, *args, **kwargs):
+         patch_size=16, *args, **kwargs):
     return CVT(num_layers=num_layers,
                num_heads=num_heads,
                mlp_ratio=mlp_ratio,

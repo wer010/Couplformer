@@ -1,5 +1,7 @@
-# coding=utf-8
+
 from __future__ import absolute_import, division, print_function
+import ctypes
+libgcc_s = ctypes.CDLL('libgcc_s.so.1')
 import ssl
 ssl._create_default_https_context = ssl._create_unverified_context
 import logging
@@ -63,15 +65,22 @@ def setup(args):
     else:
         num_classes = 1000
     # TODO: hyparameter tuning
+    # for cct and kct
+    # model = models.__dict__[args.model_type](img_size=args.img_size,
+    #                                     num_classes=num_classes,
+    #                                     positional_embedding="learnable",
+    #                                     num_layers= args.num_layers,
+    #                                     num_heads=args.num_heads,
+    #                                     mlp_ratio=args.mlp_ratio,
+    #                                     embedding_dim=args.embedding_dim,
+    #                                     n_conv_layers=2,
+    #                                     kernel_size=7)
+
+    # for vit
     model = models.__dict__[args.model_type](img_size=args.img_size,
-                                        num_classes=num_classes,
-                                        positional_embedding="learnable",
-                                        num_layers= args.num_layers,
-                                        num_heads=args.num_heads,
-                                        mlp_ratio=args.mlp_ratio,
-                                        embedding_dim=args.embedding_dim,
-                                        n_conv_layers=2,
-                                        kernel_size=7)
+                                             num_classes=num_classes,
+                                             positional_embedding="learnable",
+                                             )
 
     model.to(args.device)
     num_params = count_parameters(model)
@@ -277,7 +286,7 @@ def init_arg():
 
     parser.add_argument("--num_workers", default=4, type=int,
                         help="number of workers")
-    parser.add_argument("--img_size", default=384, type=int,
+    parser.add_argument("--img_size", default=224, type=int,
                         help="Resolution size")
 
     parser.add_argument("--num_layers", default=4, type=int,
@@ -288,8 +297,6 @@ def init_arg():
                         help="mlp_ratio")
     parser.add_argument("--embedding_dim", default=128, type=int,
                         help="embedding_dim")
-
-
 
     parser.add_argument("--train_batch_size", default=100, type=int,
                         help="Total batch size for training.")

@@ -35,8 +35,8 @@ def get_loader(args):
                                    download=False,
                                    transform=transform_test) if args.local_rank in [-1, 0] else None
     elif args.dataset == "imagenet":
-        trainset = datasets.ImageFolder(root="/home/huangyanhui/imagenet_train/imagenet2012_tar/",  transform=transform_train)
-        testset = datasets.ImageFolder(root="/home/huangyanhui/imagenet_val/",                      transform=transform_test) if args.local_rank in [-1, 0] else None
+        trainset = datasets.ImageFolder(root="/dataset/imagenet_train/imagenet2012_tar/",  transform=transform_train)
+        testset = datasets.ImageFolder(root="/dataset/imagenet_val/",                      transform=transform_test) if args.local_rank in [-1, 0] else None
     elif args.dataset == "caltech101":
         trainset = datasets.ImageFolder(root="/home/huangyanhui/caltech101/train/",  transform=transform_train)
         testset = datasets.ImageFolder(root="/home/huangyanhui/caltech101/test/",                      transform=transform_test) if args.local_rank in [-1, 0] else None
