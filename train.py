@@ -47,8 +47,6 @@ def init_arg():
     parser.add_argument("--model_type",
                         default="cct_sd",
                         help="Which variant to use.")
-    parser.add_argument("--pretrained_dir", type=str, default="ViT-B_16.npz",
-                        help="Where to search for pretrained ViT models.")
 
     parser.add_argument("--num_workers", default=0, type=int,
                         help="number of workers")
@@ -66,8 +64,7 @@ def init_arg():
     parser.add_argument('-p', '--positional-embedding',
                         type=str.lower,
                         choices=['learnable', 'sine', 'none'],
-                        default='learnable', dest='positional_embedding')
-
+                        default='sine', dest='positional_embedding')
     parser.add_argument("--train_batch_size", default=100, type=int,
                         help="Total batch size for training.")
     parser.add_argument("--eval_batch_size", default=20, type=int,
@@ -124,6 +121,7 @@ def main():
 
     args = init_arg()
     img_size = DATASETS[args.dataset]['img_size']
+    img_size = 224
     num_classes = DATASETS[args.dataset]['num_classes']
     img_mean, img_std = DATASETS[args.dataset]['mean'], DATASETS[args.dataset]['std']
     model = models.__dict__[args.model_type](img_size=img_size,
@@ -133,17 +131,22 @@ def main():
                                         # num_heads=args.num_heads,
                                         # mlp_ratio=args.mlp_ratio,
                                         # embedding_dim=args.embedding_dim,
-                                        n_conv_layers=2,
-                                        kernel_size=7)
+                                        # n_conv_layers=2,
+                                        # kernel_size=7
+                                        )
     criterion = LabelSmoothingCrossEntropy()
 
     if args.pretrain is not None:
         model_dict = model.state_dict()
         model_dict.pop('classifier.fc.weight')
         model_dict.pop('classifier.fc.bias')
+        # model_dict.pop('classifier.positional_emb')
+        # model_dict.pop('tokenizer.conv_layers.0.0.weight')
+        # model_dict.pop('tokenizer.conv_layers.0.0.bias')
+
         pretrained_dict = {k: v for k, v in torch.load(args.pretrain).items() if k in model_dict}
 
-        model.load_state_dict(pretrained_dict,strict=False)
+        model.load_state_dict(pretrained_dict, strict=False)
 
     ctime = datetime.now()
     run_path = './runs/' + ctime.strftime("%Y-%b-%d_%H:%M:%S") + '_' + args.model_type+'_' + args.dataset
@@ -156,8 +159,7 @@ def main():
         model.cuda(0)
         criterion = criterion.cuda(0)
 
-    optimizer = torch.optim.AdamW(model.parameters(), lr=args.learning_rate,
-                                  weight_decay=args.weight_decay)
+    optimizer = torch.optim.SGD(model.parameters(), lr=args.learning_rate, momentum=0.9)
 
     normalize = [transforms.Normalize(mean=img_mean, std=img_std)]
 
@@ -170,7 +172,7 @@ def main():
     augmentations += [
         transforms.RandomCrop(32, padding=4),
         transforms.RandomHorizontalFlip(),
-        transforms.Resize(32),
+        transforms.Resize(img_size),
         transforms.ToTensor(),
         *normalize,
     ]
@@ -238,6 +240,8 @@ def main():
         acc1 = cls_validate(val_loader, model, criterion, epoch)
         best_acc1 = max(acc1, best_acc1)
         total_mins = (time() - time_begin) / 60
+        writer.add_scalar('Time/test', total_mins, total_iter)
+        writer.add_scalar('Acc/test', acc1, total_iter)
         print(f'Epoch finished in {total_mins:.2f} minutes, with best acc {best_acc1:.2f} and final acc{acc1:.2f}')
 
     torch.save(model.state_dict(), run_path+'/'+'checkpoint.pth')

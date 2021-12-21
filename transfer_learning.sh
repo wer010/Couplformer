@@ -1,0 +1,1 @@
+python train.py /home/lanhai/Projects/Compact-Transformers-main/data --dataset cifar100 --model_type vit_base_16 --eval_every 1 --train_batch_size 100 --pretrain /home/lanhai/PycharmProjects/Compact-Transformers-main/runs/2021-Dec-10_14:29:10_vit_base_16_imagenet/train_iter333800_with_acc0.6978440009273115_checkpoint.bin

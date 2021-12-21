@@ -4,7 +4,7 @@ from .utils.tokenizer import Tokenizer, TextTokenizer
 from .utils.embedder import Embedder
 
 
-__all__ = ['vit_base_16','vit_large_16','vit_lite_2', 'vit_lite_4', 'vit_lite_6',
+__all__ = ['vit_base_16','vit_base_8','vit_base_4','vit_large_16','vit_lite_2', 'vit_lite_4', 'vit_lite_6',
            'vit_lite_7', 'vit_lite_8',
            'text_vit_lite_2', 'text_vit_lite_4', 'text_vit_lite_6',
            ]
@@ -109,6 +109,13 @@ def vit_large_16(*args, **kwargs):
 
 def vit_base_16(*args, **kwargs):
     return _vit_lite(num_layers=12, num_heads=12, mlp_ratio=4, embedding_dim=768, patch_size=16,
+                     *args, **kwargs)
+
+def vit_base_8(*args, **kwargs):
+    return _vit_lite(num_layers=12, num_heads=12, mlp_ratio=4, embedding_dim=768, patch_size=8,
+                     *args, **kwargs)
+def vit_base_4(*args, **kwargs):
+    return _vit_lite(num_layers=12, num_heads=12, mlp_ratio=4, embedding_dim=768, patch_size=4,
                      *args, **kwargs)
 
 
