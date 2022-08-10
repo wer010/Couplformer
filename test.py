@@ -10,10 +10,12 @@ import torch.optim
 import torch.utils.data
 import torchvision.transforms as transforms
 import torchvision.datasets as datasets
-
+from utils.visualizer import get_local
+get_local.activate()
 import src as models
 from utils.losses import LabelSmoothingCrossEntropy
-
+import numpy as np
+from numpy.linalg import matrix_rank
 model_names = sorted(name for name in models.__dict__
                      if name.islower() and not name.startswith("_")
                      and callable(models.__dict__[name]))
@@ -121,9 +123,7 @@ def main():
     model = models.__dict__[args.model](img_size=img_size,
                                         num_classes=num_classes,
                                         positional_embedding=args.positional_embedding,
-                                        n_conv_layers=args.conv_layers,
-                                        kernel_size=args.conv_size,
-                                        patch_size=args.patch_size)
+                                        num_heads = [1])
 
     model.load_state_dict(torch.load(args.model_path))
 
@@ -174,21 +174,14 @@ def main():
           f'final top-1: {acc:.2f}%')
 
 
-def adjust_learning_rate(optimizer, epoch, args):
-    lr = args.lr
-    if hasattr(args, 'warmup') and epoch < args.warmup:
-        lr = lr / (args.warmup - epoch)
-    elif not args.disable_cos:
-        lr *= 0.5 * (1. + math.cos(math.pi * (epoch - args.warmup) / (args.epochs - args.warmup)))
-
-    for param_group in optimizer.param_groups:
-        param_group['lr'] = lr
-
-
 def cls_validate(val_loader, model, args):
     model.eval()
     correct = 0
     total = 0
+    all_attn_list = []
+    for i in range(8):
+        all_attn_list.append([])
+
     with torch.no_grad():
         for i, (images, target) in tqdm(enumerate(val_loader)):
             if (not args.no_cuda) and torch.cuda.is_available():
@@ -197,11 +190,30 @@ def cls_validate(val_loader, model, args):
 
             output = model(images)
 
+            cache = get_local.cache
+            for key in cache:
+                if len(cache[key]) >0:
+                    attn_list = cache[key]
+
+            for id,item in enumerate(all_attn_list):
+                item.append(attn_list[i*8 +id])
 
             # since we're not training, we don't need to calculate the gradients for our outputs
             _, predicted = torch.max(output, 1)
             total += target.size(0)
             correct += (predicted == target).sum().item()
+
+    attn_array_list = []
+    for item in all_attn_list:
+        attn_array_list.append(np.concatenate(item))
+
+    rank_list = []
+    for item in attn_array_list:
+        rank_per_layer = []
+        for id in range(item.shape[0]):
+            rank_per_layer.append(matrix_rank(item[id].squeeze()))
+        rank_list.append(rank_per_layer)
+
 
     return (100 * correct / total)
 

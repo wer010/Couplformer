@@ -20,21 +20,32 @@ class KCT(nn.Module):
                  pooling_kernel_size=3,
                  pooling_stride=2,
                  pooling_padding=1,
+                 patch_size = 4,
                  *args, **kwargs):
         super(KCT, self).__init__()
 
+        # self.tokenizer = Tokenizer(n_input_channels=n_input_channels,
+        #                            n_output_channels=embedding_dim,
+        #                            kernel_size=kernel_size,
+        #                            stride=stride,
+        #                            padding=padding,
+        #                            pooling_kernel_size=pooling_kernel_size,
+        #                            pooling_stride=pooling_stride,
+        #                            pooling_padding=pooling_padding,
+        #                            max_pool=True,
+        #                            activation=nn.ReLU,
+        #                            n_conv_layers=n_conv_layers,
+        #                            conv_bias=False)
         self.tokenizer = Tokenizer(n_input_channels=n_input_channels,
                                    n_output_channels=embedding_dim,
-                                   kernel_size=kernel_size,
-                                   stride=stride,
-                                   padding=padding,
-                                   pooling_kernel_size=pooling_kernel_size,
-                                   pooling_stride=pooling_stride,
-                                   pooling_padding=pooling_padding,
-                                   max_pool=True,
-                                   activation=nn.ReLU,
-                                   n_conv_layers=n_conv_layers,
-                                   conv_bias=False)
+                                   kernel_size=patch_size,
+                                   stride=patch_size,
+                                   padding=0,
+                                   max_pool=False,
+                                   activation=None,
+                                   n_conv_layers=1,
+                                   conv_bias=True)
+
 
         self.classifier = TransformerClassifier(
             sequence_length=self.tokenizer.sequence_length(n_channels=n_input_channels,
@@ -94,7 +105,7 @@ def kct_7(*args, **kwargs):
 
 
 def kct_8(*args, **kwargs):
-    return _kct(num_layers=8, num_heads=4, mlp_ratio=2, embedding_dim=256,
+    return _kct(num_layers=8, num_heads=128, mlp_ratio=2, embedding_dim=256,
                 *args, **kwargs)
 
 

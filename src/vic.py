@@ -3,6 +3,8 @@ import torch.nn as nn
 import torch.utils.checkpoint as checkpoint
 import torch.nn.functional as F
 from timm.models.layers import DropPath, to_2tuple, trunc_normal_
+from utils.visualizer import get_local
+
 __all__ = ['vic_sd','vic_2', 'vic_4', 'vic_6',  'vic_8','vic_10', 'vic_14', 'vic_16'
            ]
 
@@ -24,6 +26,54 @@ class Mlp(nn.Module):
         x = self.fc2(x)
         x = self.drop(x)
         return x
+
+class PatchMerging(nn.Module):
+    r""" Patch Merging Layer.
+
+    Args:
+        input_resolution (tuple[int]): Resolution of input feature.
+        dim (int): Number of input channels.
+        norm_layer (nn.Module, optional): Normalization layer.  Default: nn.LayerNorm
+    """
+
+    def __init__(self, input_resolution, dim, norm_layer=nn.LayerNorm):
+        super().__init__()
+        self.input_resolution = input_resolution
+        self.dim = dim
+        self.reduction = nn.Linear(4 * dim, 2 * dim, bias=False)
+        self.norm = norm_layer(4 * dim)
+
+    def forward(self, x):
+        """
+        x: B, H*W, C
+        """
+        H, W = self.input_resolution
+        B, L, C = x.shape
+        assert L == H * W, "input feature has wrong size"
+        assert H % 2 == 0 and W % 2 == 0, f"x size ({H}*{W}) are not even."
+
+        x = x.view(B, H, W, C)
+
+        x0 = x[:, 0::2, 0::2, :]  # B H/2 W/2 C
+        x1 = x[:, 1::2, 0::2, :]  # B H/2 W/2 C
+        x2 = x[:, 0::2, 1::2, :]  # B H/2 W/2 C
+        x3 = x[:, 1::2, 1::2, :]  # B H/2 W/2 C
+        x = torch.cat([x0, x1, x2, x3], -1)  # B H/2 W/2 4*C
+        x = x.view(B, -1, 4 * C)  # B H/2*W/2 4*C
+
+        x = self.norm(x)
+        x = self.reduction(x)
+
+        return x
+
+    def extra_repr(self) -> str:
+        return f"input_resolution={self.input_resolution}, dim={self.dim}"
+
+    def flops(self):
+        H, W = self.input_resolution
+        flops = H * W * self.dim
+        flops += (H // 2) * (W // 2) * 4 * self.dim * 2 * self.dim
+        return flops
 
 class CouplingAttention(nn.Module):
     """ Window based multi-head self attention (W-MSA) module with relative position bias.
@@ -55,6 +105,7 @@ class CouplingAttention(nn.Module):
         self.proj = nn.Linear(dim, dim)
         self.proj_drop = nn.Dropout(proj_drop)
 
+    @get_local('attn_matrix')
     def forward(self, x):
         B, N, C = x.shape
         #x=(128,64,256)
@@ -88,11 +139,26 @@ class CouplingAttention(nn.Module):
         b = self.attn_drop(b)
         b = b.unsqueeze(2)
 
+        attn_item_list = []
+        for i in range(a.shape[0]):
+            attn_item_list.append(torch.kron(a[i],b[i]))
+
+        attn_matrix = torch.cat(attn_item_list)
+
+
         #Attention kronecker matrix times V
         # batch, heads, height, width, channel->batch, heads, channel, height, width
         x = v.permute(0,1,4,2,3) @ b.transpose(-2,-1)
         x = a @ x
         # batch, heads, channel, width, height->batch, heads, channel, height, width
+
+
+
+        ### To check the AVB and (AxB)V way of calculating the x is identical
+        # x_d = attn_matrix @ v.reshape(batch, num_head, width * height, channel)
+        # x_d = x_d.transpose(-2, -1)
+        # x_d = x_d.reshape(batch, num_head,channel, height, width)
+        # assert torch.allclose(x,x_d,atol=1e-6)
 
         x = x.reshape(B, C, N).transpose(-2, -1)
 
@@ -188,54 +254,6 @@ class CouplformerBlock(nn.Module):
         flops += 2 * H * W * self.dim * self.dim * self.mlp_ratio
         # norm2
         flops += self.dim * H * W
-        return flops
-
-class PatchMerging(nn.Module):
-    r""" Patch Merging Layer.
-
-    Args:
-        input_resolution (tuple[int]): Resolution of input feature.
-        dim (int): Number of input channels.
-        norm_layer (nn.Module, optional): Normalization layer.  Default: nn.LayerNorm
-    """
-
-    def __init__(self, input_resolution, dim, norm_layer=nn.LayerNorm):
-        super().__init__()
-        self.input_resolution = input_resolution
-        self.dim = dim
-        self.reduction = nn.Linear(4 * dim, 2 * dim, bias=False)
-        self.norm = norm_layer(4 * dim)
-
-    def forward(self, x):
-        """
-        x: B, H*W, C
-        """
-        H, W = self.input_resolution
-        B, L, C = x.shape
-        assert L == H * W, "input feature has wrong size"
-        assert H % 2 == 0 and W % 2 == 0, f"x size ({H}*{W}) are not even."
-
-        x = x.view(B, H, W, C)
-
-        x0 = x[:, 0::2, 0::2, :]  # B H/2 W/2 C
-        x1 = x[:, 1::2, 0::2, :]  # B H/2 W/2 C
-        x2 = x[:, 0::2, 1::2, :]  # B H/2 W/2 C
-        x3 = x[:, 1::2, 1::2, :]  # B H/2 W/2 C
-        x = torch.cat([x0, x1, x2, x3], -1)  # B H/2 W/2 4*C
-        x = x.view(B, -1, 4 * C)  # B H/2*W/2 4*C
-
-        x = self.norm(x)
-        x = self.reduction(x)
-
-        return x
-
-    def extra_repr(self) -> str:
-        return f"input_resolution={self.input_resolution}, dim={self.dim}"
-
-    def flops(self):
-        H, W = self.input_resolution
-        flops = H * W * self.dim
-        flops += (H // 2) * (W // 2) * 4 * self.dim * 2 * self.dim
         return flops
 
 class BasicLayer(nn.Module):
@@ -500,6 +518,12 @@ class Couplformer(nn.Module):
         x = self.head(x)
         return x
 
+    # TODO:
+    def get_attn_rank(self):
+        rk=0
+        return rk
+
+
     def flops(self):
         flops = 0
         flops += self.patch_embed.flops()
@@ -518,7 +542,7 @@ def _vic(img_size, patch_size, num_classes, num_layers, num_heads, mlp_ratio, em
                        patch_size=patch_size,
                        in_chans=3,
                        embed_dim=embedding_dim,
-                       channel_merge='pooling',# concat or pooling
+                       channel_merge='concat',# concat or pooling
                        pooling='attnpool', #avgpool or attnpool
                        depths=num_layers,
                        num_heads=num_heads,
@@ -560,7 +584,7 @@ def vic_6(embedding_dim,*args, **kwargs):
 
 
 def vic_8(*args, **kwargs):
-    return _vic(patch_size=4,num_layers=[ 8 ], num_heads=[256//2], mlp_ratio=2, embedding_dim=256,
+    return _vic(patch_size=4,num_layers=[ 8 ], mlp_ratio=2, embedding_dim=256,
                 *args, **kwargs)
 
 def vic_10(embedding_dim,*args, **kwargs):

@@ -7,12 +7,11 @@ class Attention(Module):
     """
     Obtained from timm: github.com:rwightman/pytorch-image-models
     """
-
     def __init__(self, dim, num_heads=8, attention_dropout=0.1, projection_dropout=0.1):
         super().__init__()
         self.num_heads = num_heads
         head_dim = dim // self.num_heads
-        self.scale = head_dim ** -0.5
+        self.scale = head_dim ** -0.25
 
         self.qkv = Linear(dim, dim * 3, bias=False)
         self.attn_drop = Dropout(attention_dropout)

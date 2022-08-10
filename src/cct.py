@@ -14,7 +14,7 @@ class CCT(nn.Module):
                  img_size=224,
                  embedding_dim=768,
                  n_input_channels=3,
-                 n_conv_layers=1,
+                 n_conv_layers=2,
                  kernel_size=7,
                  stride=2,
                  padding=3,
@@ -98,7 +98,7 @@ class TextCCT(nn.Module):
 
 
 def _cct(num_layers, num_heads, mlp_ratio, embedding_dim,
-         kernel_size=7, stride=None, padding=None,
+         kernel_size=3, stride=None, padding=None,
          *args, **kwargs):
     stride = stride if stride is not None else max(1, (kernel_size // 2) - 1)
     padding = padding if padding is not None else max(1, (kernel_size // 2))

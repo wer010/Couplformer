@@ -2,6 +2,8 @@ import torch
 from torch.nn import Module, ModuleList, Linear, Dropout, LayerNorm, Identity, Parameter, init
 import torch.nn.functional as F
 from .stochastic_depth import DropPath
+from numpy.linalg import matrix_rank
+from utils.visualizer import get_local
 
 
 class Attention(Module):
@@ -20,6 +22,7 @@ class Attention(Module):
         self.proj = Linear(dim, dim)
         self.proj_drop = Dropout(projection_dropout)
 
+    @get_local('attn_matrix')
     def forward(self, x):
         B, N, C = x.shape
         qkv = self.qkv(x).reshape(B, N, 3, self.num_heads, C // self.num_heads).permute(2, 0, 3, 1, 4)
@@ -27,6 +30,7 @@ class Attention(Module):
 
         attn = (q @ k.transpose(-2, -1)) * self.scale
         attn = attn.softmax(dim=-1)
+        attn_matrix = attn
         attn = self.attn_drop(attn)
 
 

@@ -12,8 +12,11 @@ import torch.utils.data
 import torchvision.transforms as transforms
 import torchvision.datasets as datasets
 from torch.utils.tensorboard import SummaryWriter
+
 import src as models
 from utils.losses import LabelSmoothingCrossEntropy
+from utils.logger import create_logger
+
 
 model_names = sorted(name for name in models.__dict__
                      if name.islower() and not name.startswith("_")
@@ -88,7 +91,7 @@ def init_arg():
                         help="Total number of training epochs to perform.")
     parser.add_argument("--decay_type", choices=["cosine", "linear"], default="cosine",
                         help="How to decay the learning rate.")
-    parser.add_argument("--warmup_epoch", default= 10, type=int,
+    parser.add_argument("--warmup", default= 0, type=int,
                         help="Step of training to perform learning rate warmup for.")
     parser.add_argument("--warmup_lr", default=0.001, type=float,
                         help="lr of training to perform learning rate warmup for.")
@@ -121,19 +124,24 @@ def main():
 
     args = init_arg()
     img_size = DATASETS[args.dataset]['img_size']
-    img_size = 224
+    # img_size = 224
     num_classes = DATASETS[args.dataset]['num_classes']
     img_mean, img_std = DATASETS[args.dataset]['mean'], DATASETS[args.dataset]['std']
     model = models.__dict__[args.model_type](img_size=img_size,
                                         num_classes=num_classes,
                                         positional_embedding=args.positional_embedding,
                                         # num_layers=args.num_layers,
-                                        # num_heads=args.num_heads,
+                                        num_heads=[args.num_heads],
                                         # mlp_ratio=args.mlp_ratio,
                                         # embedding_dim=args.embedding_dim,
                                         # n_conv_layers=2,
                                         # kernel_size=7
                                         )
+    # from torchvision.models import resnet18
+    # model = resnet18()
+    # args.model_type = 'resnet18'
+
+
     criterion = LabelSmoothingCrossEntropy()
 
     if args.pretrain is not None:
@@ -153,13 +161,15 @@ def main():
     if not os.path.exists(run_path):
         os.mkdir(run_path)
 
+    logger = create_logger(output_dir=run_path,  name=args.model_type)
+
     writer = SummaryWriter(run_path)
     if torch.cuda.is_available():
         torch.cuda.set_device(0)
         model.cuda(0)
         criterion = criterion.cuda(0)
 
-    optimizer = torch.optim.SGD(model.parameters(), lr=args.learning_rate, momentum=0.9)
+    optimizer = torch.optim.AdamW(model.parameters(), lr=args.learning_rate,weight_decay=6e-2)
 
     normalize = [transforms.Normalize(mean=img_mean, std=img_std)]
 
@@ -201,6 +211,9 @@ def main():
 
     print("Beginning training")
     total_iter = 0
+    logger.info(args)
+    logger.info(model)
+
 
     for epoch in range(args.epoch):
         time_begin = time()
@@ -215,6 +228,10 @@ def main():
                 target = target.cuda(0, non_blocking=True)
 
             output = model(images)
+
+
+
+
             loss = criterion(output, target)
             acc1 = accuracy(output, target)
             n += images.size(0)
@@ -235,14 +252,14 @@ def main():
             total_iter+=1
             if i % 100 == 0:
                 avg_loss, avg_acc1 = (loss_val / n), (acc1_val / n)
-                print(f'[Epoch {epoch + 1}][Train][{i}] \t Loss: {avg_loss:.4e} \t Top-1 {avg_acc1:6.2f}')
+                logger.info(f'[Epoch {epoch + 1}][Train][{i}] \t Loss: {avg_loss:.4e} \t Top-1 {avg_acc1:6.2f}')
 
-        acc1 = cls_validate(val_loader, model, criterion, epoch)
+        acc1 = cls_validate(val_loader, model, criterion,logger, epoch)
         best_acc1 = max(acc1, best_acc1)
         total_mins = (time() - time_begin) / 60
         writer.add_scalar('Time/test', total_mins, total_iter)
         writer.add_scalar('Acc/test', acc1, total_iter)
-        print(f'Epoch finished in {total_mins:.2f} minutes, with best acc {best_acc1:.2f} and final acc{acc1:.2f}')
+        logger.info(f'Epoch finished in {total_mins:.2f} minutes, with best acc {best_acc1:.2f} and final acc{acc1:.2f}')
 
     torch.save(model.state_dict(), run_path+'/'+'checkpoint.pth')
 
@@ -252,7 +269,7 @@ def adjust_learning_rate(optimizer, epoch, args):
     if hasattr(args, 'warmup') and epoch < args.warmup:
         lr = lr / (args.warmup - epoch)
     elif args.decay_type=='cosine':
-        lr *= 0.5 * (1. + math.cos(math.pi * (epoch - args.warmup_epoch) / (args.epoch - args.warmup_epoch)))
+        lr *= 0.5 * (1. + math.cos(math.pi * (epoch - args.warmup) / (args.epoch - args.warmup)))
 
     for param_group in optimizer.param_groups:
         param_group['lr'] = lr
@@ -272,7 +289,7 @@ def accuracy(output, target):
         return res
 
 
-def cls_train(train_loader, model, criterion, optimizer, epoch, args, writer):
+def cls_train(train_loader, model, criterion, optimizer, epoch, args, writer,logger):
     model.train()
     loss_val, acc1_val = 0, 0
     n = 0
@@ -299,10 +316,10 @@ def cls_train(train_loader, model, criterion, optimizer, epoch, args, writer):
 
         if args.print_freq >= 0 and i % args.print_freq == 0:
             avg_loss, avg_acc1 = (loss_val / n), (acc1_val / n)
-            print(f'[Epoch {epoch + 1}][Train][{i}] \t Loss: {avg_loss:.4e} \t Top-1 {avg_acc1:6.2f}')
+            logger.info(f'[Epoch {epoch + 1}][Train][{i}] \t Loss: {avg_loss:.4e} \t Top-1 {avg_acc1:6.2f}')
 
 
-def cls_validate(val_loader, model, criterion,  epoch=None):
+def cls_validate(val_loader, model, criterion,logger, epoch=None):
     model.eval()
     loss_val, acc1_val = 0, 0
     n = 0
@@ -323,7 +340,7 @@ def cls_validate(val_loader, model, criterion,  epoch=None):
 
     avg_loss, avg_acc1 = (loss_val / n), (acc1_val / n)
     total_mins = -1 if time_begin is None else (time() - time_begin) / 60
-    print(f'[Epoch {epoch + 1}] \t \t Top-1 {avg_acc1:6.2f} \t \t Time: {total_mins:.2f}')
+    logger.info(f'[Epoch {epoch + 1}] \t \t Top-1 {avg_acc1:6.2f} \t \t Time: {total_mins:.2f}')
 
     return avg_acc1
 
