@@ -3,7 +3,7 @@ import torch.nn as nn
 import torch.utils.checkpoint as checkpoint
 import torch.nn.functional as F
 from timm.models.layers import DropPath, to_2tuple, trunc_normal_
-from utils.visualizer import get_local
+# from utils.visualizer import get_local
 
 __all__ = ['vic_sd','vic_2', 'vic_4', 'vic_6',  'vic_8','vic_10', 'vic_14', 'vic_16'
            ]
@@ -105,7 +105,7 @@ class CouplingAttention(nn.Module):
         self.proj = nn.Linear(dim, dim)
         self.proj_drop = nn.Dropout(proj_drop)
 
-    @get_local('attn_matrix')
+    # @get_local('attn_matrix')
     def forward(self, x):
         B, N, C = x.shape
         #x=(128,64,256)
@@ -139,11 +139,12 @@ class CouplingAttention(nn.Module):
         b = self.attn_drop(b)
         b = b.unsqueeze(2)
 
-        attn_item_list = []
-        for i in range(a.shape[0]):
-            attn_item_list.append(torch.kron(a[i],b[i]))
-
-        attn_matrix = torch.cat(attn_item_list)
+        ######## Uncomment to calculate the attn_matrix
+        # attn_item_list = []
+        # for i in range(a.shape[0]):
+        #     attn_item_list.append(torch.kron(a[i],b[i]))
+        #
+        # attn_matrix = torch.cat(attn_item_list)
 
 
         #Attention kronecker matrix times V
@@ -542,7 +543,7 @@ def _vic(img_size, patch_size, num_classes, num_layers, num_heads, mlp_ratio, em
                        patch_size=patch_size,
                        in_chans=3,
                        embed_dim=embedding_dim,
-                       channel_merge='concat',# concat or pooling
+                       channel_merge='pooling',# concat or pooling
                        pooling='attnpool', #avgpool or attnpool
                        depths=num_layers,
                        num_heads=num_heads,

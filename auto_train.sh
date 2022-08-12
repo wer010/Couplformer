@@ -18,8 +18,8 @@
 #python train.py /home/lanhai/Projects/Compact-Transformers-main/data --dataset cifar10 --model_type cvt_8 --epoch 200 --eval_every 1 --train_batch_size 128
 #python train.py /home/lanhai/Projects/Compact-Transformers-main/data --dataset cifar10 --model_type kct_8 --epoch 200 --eval_every 1 --train_batch_size 128
 #python train.py /home/lanhai/Projects/Compact-Transformers-main/data --dataset cifar10 --model_type cct_8 --epoch 200 --eval_every 1 --train_batch_size 128
-python train.py /home/lanhai/Projects/Compact-Transformers-main/data --dataset cifar10 --model_type vic_8 --num_heads 8 --epoch 200 --eval_every 1 --train_batch_size 128
-python train.py /home/lanhai/Projects/Compact-Transformers-main/data --dataset cifar10 --model_type vic_8 --num_heads 16 --epoch 200 --eval_every 1 --train_batch_size 128
-python train.py /home/lanhai/Projects/Compact-Transformers-main/data --dataset cifar10 --model_type vic_8 --num_heads 32 --epoch 200 --eval_every 1 --train_batch_size 128
-python train.py /home/lanhai/Projects/Compact-Transformers-main/data --dataset cifar10 --model_type vic_8 --num_heads 64 --epoch 200 --eval_every 1 --train_batch_size 128
+#python train.py /home/lanhai/Projects/Compact-Transformers-main/data --dataset cifar10 --model_type vic_8 --num_heads 8 --epoch 200 --eval_every 1 --train_batch_size 128
+#python train.py /home/lanhai/Projects/Compact-Transformers-main/data --dataset cifar10 --model_type vic_8 --num_heads 16 --epoch 200 --eval_every 1 --train_batch_size 128
+#python train.py /home/lanhai/Projects/Compact-Transformers-main/data --dataset cifar10 --model_type vic_8 --num_heads 32 --epoch 200 --eval_every 1 --train_batch_size 128
+#python train.py /home/lanhai/Projects/Compact-Transformers-main/data --dataset cifar10 --model_type vic_8 --num_heads 64 --epoch 200 --eval_every 1 --train_batch_size 128
 python train.py /home/lanhai/Projects/Compact-Transformers-main/data --dataset cifar10 --model_type vic_8 --num_heads 256 --epoch 200 --eval_every 1 --train_batch_size 128
